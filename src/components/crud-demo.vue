@@ -5,7 +5,7 @@
     </div>
     <!-- 输入部分 -->
     <div class="query-box">
-      <el-input class="input" v-model="querInput" placeholder="请输入您需要搜索的信息" @input="queryData"></el-input>
+      <el-input class="input" v-model="querInput" placeholder="请输入您需要搜索的信息" @change="queryData"></el-input>
       <!-- 提交部分 -->
       <div class="submit">
         <el-button class="bnt" @click="openDialog" type="primary">增加</el-button>
@@ -46,7 +46,7 @@
       <el-table ref="multipleTableRef" :data="tableData" style="width: 100%" @selection-change="handleSelectionChange"
         border>
         <el-table-column type="selection" width="55" />
-        <el-table-column prop="date" label="时间" width="150" />
+        <el-table-column prop="UpdatedAt" label="时间" width="150" />
         <el-table-column fixed prop="name" label="姓名" width="100" />
         <el-table-column prop="state" label="状态" width="100" />
         <el-table-column prop="phone" label="手机" width="120" />
@@ -60,32 +60,31 @@
           </template>
         </el-table-column>
       </el-table>
+      <!-- 分页 -->
+      <div class="page-box">
+        <el-pagination background layout="prev, pager, next" @current-change="currentChange" :total="pageNum"
+          :page-size="pageSize" v-model:current-page="currentPage" />
+      </div>
     </div>
-
   </div>
 </template>
 
 <script setup>
+import axios from 'axios';
 import dayjs from 'dayjs'
-import { ref, watch } from 'vue';
-/* 表格 */
-// 多选按钮
-const multipleSelection = ref([])
-const handleSelectionChange = (val) => {
-  multipleSelection.value = []
-  val.forEach(item => {
-    multipleSelection.value.push(item.id)
-  })
-  console.log(multipleSelection.value)
-}
+import { onMounted, ref, watch } from 'vue'
+import request from '../utils/request'
+import {useStore} from '../store/curd'
+import {storeToRefs} from 'pinia'
+import { computed } from '@vue/reactivity';
+const curd = useStore()
+const {count} = storeToRefs(curd)
+// 分页设置
+let pageNum = ref(2)//总数
+let pageSize = ref(5)//每页有多少
+let currentPage = ref(1)
+let querInput = ref('')
 const multipleTableRef = ref()
-// 删除多选按钮
-const deleteList = () => {
-  multipleSelection.value.forEach(id => {
-    deleteData({id})
-  })
-  multipleSelection.value = []
-}
 let tableData = ref([
   {
     id: 0,
@@ -97,25 +96,6 @@ let tableData = ref([
     address: 'No. 189, Grove St, Los Angeles',
   },
 ])
-// 浅拷贝一个副本数据
-let tableDataCopy = ref([])
-Object.assign(tableDataCopy.value,tableData.value)
-// 删除按钮
-const deleteData = ({ id }) => {
-  let index = tableData.value.findIndex(item =>item.id === id)
-  tableData.value.splice(index, 1)
-}
-//  编辑按钮
-let is_edit = ref(false)
-const editData = (val) => {
-  is_edit.value = true
-  form.value = {...val}
-  openDialog()
-}
-/* 弹窗 */
-const dialogTableVisible = ref(false)
-const dialogFormVisible = ref(false)
-const formLabelWidth = '50px'
 let form = ref({
   name: '',
   email: '',
@@ -123,20 +103,71 @@ let form = ref({
   state: '',
   address: ''
 })
+/* 弹窗 */
+const dialogTableVisible = ref(false)
+const dialogFormVisible = ref(false)
+const formLabelWidth = '50px'
+// 浅拷贝一个副本数据
+let tableDataCopy = ref([])
+Object.assign(tableDataCopy.value, tableData.value)
+/* 表格 */
+// 多选按钮
+const multipleSelection = ref([])
+const handleSelectionChange = (val) => {
+  multipleSelection.value = []
+  val.forEach(item => {
+    multipleSelection.value.push(item.ID)
+  })
+  console.log(multipleSelection.value)
+}
+// 删除多选按钮
+const deleteList = () => {
+  multipleSelection.value.forEach(ID => {
+    deleteData({ ID })
+  })
+  multipleSelection.value = []
+}
+// 删除按钮
+const deleteData = async ({ ID }) => {
+  // let index = tableData.value.findIndex(item => item.id === id)
+  // tableData.value.splice(index, 1)
+  await request.delete(`/delete/${ID}`)
+  await getTableData(currentPage)
+}
+//  编辑按钮
+let is_edit = ref(false)
+const editData = (val) => {
+  is_edit.value = true
+  form.value = { ...val }
+  openDialog()
+}
+/* 增加数据 */
 // 确认按钮
 const now = new Date()
-const confirmDialog = (val) => {
+const dataChange = computed(()=>{
+  return dayjs(now).format('YYYY-MM-DD')
+})
+const confirmDialog = async (val) => {
+  console.log(currentPage.value)
   dialogFormVisible.value = false
   if (!is_edit.value) {
-    tableData.value.push({
+    // 新增数据
+    await request.post('/add', {
+      ...form.value
+    })
+    /* tableData.value.push({
       date: dayjs(now).format('YYYY-MM-DD'),
       id: tableData.value.length !== 0 ? tableData.value[tableData.value.length - 1].id + 1 : 0,
       ...form.value
-    })
+    }) */
   } else {
-    let index = tableData.value.findIndex(item => item.id === form.value.id)
-    tableData.value[index] = {...form.value}
+    // let index = tableData.value.findIndex(item => item.id === form.value.id)
+    // tableData.value[index] = { ...form.value }
+    await request.put(`/update/${form.value.ID}`,{
+      ...form.value
+    })
   }
+  await getTableData(currentPage.value)
 }
 // 取消按钮
 const coloseDialog = () => {
@@ -144,7 +175,7 @@ const coloseDialog = () => {
 }
 // 打开弹窗
 const openDialog = () => {
-  if(!is_edit.value){
+  if (!is_edit.value) {
     form.value = {}
   }
   dialogFormVisible.value = true
@@ -156,15 +187,35 @@ watch(dialogFormVisible, () => {
   }
 })
 /* 搜索功能 */
-let querInput = ref('')
-const queryData = ()=>{
-  if(querInput.value.length>0){
-    tableData.value = tableData.value.filter(item=>item.name.toUpperCase().match(querInput.value.toUpperCase()))
-  }else{
-    tableData.value = tableDataCopy.value
-    console.log(tableDataCopy.value)
+
+const queryData = async (val) => {
+  if (querInput.value.length > 0) {
+    // 查询数据库
+  tableData.value = await request.get(`/list/${val}`)
+    // tableData.value = tableData.value.filter(item => item.name.toUpperCase().match(querInput.value.toUpperCase()))
+  } else {
+    // tableData.value = tableDataCopy.value
+    await getTableData()
   }
 }
+/* axios */
+const getTableData = async (cur = 1) => {
+  let res = await request.get('/list', {
+    pageSize: 5,
+    pageNum: cur
+  })
+  tableData.value = res.list
+  pageNum.value = res.total
+  pageSize.value = res.pageSize
+}
+const currentChange = (val) => {
+  currentPage.value = val
+  getTableData(val)
+}
+onMounted(()=>{
+  getTableData(),
+  curd.getTableData()
+})
 </script>
 
 <style lang="less" scoped>
@@ -192,6 +243,12 @@ const queryData = ()=>{
     .form-item-input {
       width: 200px;
     }
+  }
+
+  .page-box {
+    margin-top: 5px;
+    display: flex;
+    justify-content: center;
   }
 }
 </style>
